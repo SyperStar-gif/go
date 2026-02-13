@@ -1,0 +1,12 @@
+server:
+  port: "8080"
+storage:
+  mode: "postgres" # postgres | local
+  local_path: "localdb/subscriptions.json"
+db:
+  host: "postgres"
+  port: 5432
+  user: "postgres"
+  password: "postgres"
+  name: "subscriptions"
+  sslmode: "disable"
