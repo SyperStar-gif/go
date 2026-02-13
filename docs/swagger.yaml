@@ -1,0 +1,174 @@
+openapi: 3.0.3
+info:
+  title: Subscription Service API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: ok
+  /api/v1/subscriptions/:
+    post:
+      summary: Create subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionPayload'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+    get:
+      summary: List subscriptions
+      parameters:
+        - in: query
+          name: user_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: service_name
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+        - in: query
+          name: offset
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Subscription'
+  /api/v1/subscriptions/{id}:
+    get:
+      summary: Get subscription by id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Found
+    put:
+      summary: Update subscription
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionPayload'
+      responses:
+        '200':
+          description: Updated
+    delete:
+      summary: Delete subscription
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Deleted
+  /api/v1/subscriptions/total:
+    get:
+      summary: Calculate total subscription cost for period
+      parameters:
+        - in: query
+          name: period_start
+          required: true
+          schema:
+            type: string
+            example: 01-2025
+        - in: query
+          name: period_end
+          required: true
+          schema:
+            type: string
+            example: 03-2025
+        - in: query
+          name: user_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: service_name
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Calculated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  period_start:
+                    type: string
+                  period_end:
+                    type: string
+                  total_price:
+                    type: integer
+components:
+  schemas:
+    SubscriptionPayload:
+      type: object
+      required: [service_name, price, user_id, start_date]
+      properties:
+        service_name:
+          type: string
+          example: Yandex Plus
+        price:
+          type: integer
+          example: 400
+        user_id:
+          type: string
+          format: uuid
+        start_date:
+          type: string
+          example: 07-2025
+        end_date:
+          type: string
+          nullable: true
+          example: 12-2025
+    Subscription:
+      allOf:
+        - $ref: '#/components/schemas/SubscriptionPayload'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            created_at:
+              type: string
+            updated_at:
+              type: string
