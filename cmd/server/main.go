@@ -32,7 +32,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	repo := repository.NewSubscriptionRepository(pool, logger)
+	repo := repository.NewSubscriptionRepository(pool)
 	h := handler.New(repo, logger)
 
 	srv := &http.Server{

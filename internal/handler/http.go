@@ -36,15 +36,21 @@ type subscriptionResponse struct {
 }
 
 func toResponse(s model.Subscription) subscriptionResponse {
-	var end *string
+	var endDate *string
 	if s.EndDate != nil {
 		v := model.FormatMonthYear(*s.EndDate)
-		end = &v
+		endDate = &v
 	}
+
 	return subscriptionResponse{
-		ID: s.ID, ServiceName: s.ServiceName, Price: s.Price, UserID: s.UserID,
-		StartDate: model.FormatMonthYear(s.StartDate), EndDate: end,
-		CreatedAt: s.CreatedAt.Format(http.TimeFormat), UpdatedAt: s.UpdatedAt.Format(http.TimeFormat),
+		ID:          s.ID,
+		ServiceName: s.ServiceName,
+		Price:       s.Price,
+		UserID:      s.UserID,
+		StartDate:   model.FormatMonthYear(s.StartDate),
+		EndDate:     endDate,
+		CreatedAt:   s.CreatedAt.Format(http.TimeFormat),
+		UpdatedAt:   s.UpdatedAt.Format(http.TimeFormat),
 	}
 }
 
@@ -76,8 +82,8 @@ func (h *Handler) writeJSON(w http.ResponseWriter, status int, data any) {
 	_ = json.NewEncoder(w).Encode(data)
 }
 
-func (h *Handler) writeError(w http.ResponseWriter, status int, msg string) {
-	h.writeJSON(w, status, map[string]string{"error": msg})
+func (h *Handler) writeError(w http.ResponseWriter, status int, message string) {
+	h.writeJSON(w, status, map[string]string{"error": message})
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -86,16 +92,19 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	s, err := payload.Validate()
+
+	subscription, err := payload.Validate()
 	if err != nil {
 		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	created, err := h.repo.Create(r.Context(), s)
+
+	created, err := h.repo.Create(r.Context(), subscription)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
 	h.writeJSON(w, http.StatusCreated, toResponse(created))
 }
 
@@ -105,7 +114,8 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	s, err := h.repo.GetByID(r.Context(), id)
+
+	subscription, err := h.repo.GetByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			h.writeError(w, http.StatusNotFound, "subscription not found")
@@ -114,7 +124,8 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.writeJSON(w, http.StatusOK, toResponse(s))
+
+	h.writeJSON(w, http.StatusOK, toResponse(subscription))
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
@@ -123,17 +134,20 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+
 	var payload model.SubscriptionPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	s, err := payload.Validate()
+
+	subscription, err := payload.Validate()
 	if err != nil {
 		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	updated, err := h.repo.Update(r.Context(), id, s)
+
+	updated, err := h.repo.Update(r.Context(), id, subscription)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			h.writeError(w, http.StatusNotFound, "subscription not found")
@@ -142,6 +156,7 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
 	h.writeJSON(w, http.StatusOK, toResponse(updated))
 }
 
@@ -151,6 +166,7 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+
 	if err := h.repo.Delete(r.Context(), id); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			h.writeError(w, http.StatusNotFound, "subscription not found")
@@ -159,51 +175,64 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	limit := 50
 	offset := 0
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if v, err := strconv.Atoi(l); err == nil && v > 0 {
-			limit = v
+
+	if v := r.URL.Query().Get("limit"); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil || parsed <= 0 {
+			h.writeError(w, http.StatusBadRequest, "limit must be a positive number")
+			return
 		}
+		limit = parsed
 	}
-	if o := r.URL.Query().Get("offset"); o != "" {
-		if v, err := strconv.Atoi(o); err == nil && v >= 0 {
-			offset = v
+	if v := r.URL.Query().Get("offset"); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil || parsed < 0 {
+			h.writeError(w, http.StatusBadRequest, "offset must be >= 0")
+			return
 		}
+		offset = parsed
 	}
-	serviceName := r.URL.Query().Get("service_name")
-	if serviceName != "" {
-		serviceName = "%" + serviceName + "%"
+
+	userID, err := parseOptionalUUID(r.URL.Query().Get("user_id"))
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "user_id must be valid UUID")
+		return
 	}
-	items, err := h.repo.List(r.Context(), r.URL.Query().Get("user_id"), serviceName, limit, offset)
+
+	items, err := h.repo.List(r.Context(), userID, r.URL.Query().Get("service_name"), limit, offset)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	resp := make([]subscriptionResponse, 0, len(items))
+
+	result := make([]subscriptionResponse, 0, len(items))
 	for _, s := range items {
-		resp = append(resp, toResponse(s))
+		result = append(result, toResponse(s))
 	}
-	h.writeJSON(w, http.StatusOK, resp)
+	h.writeJSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) total(w http.ResponseWriter, r *http.Request) {
-	start := r.URL.Query().Get("period_start")
-	end := r.URL.Query().Get("period_end")
-	if start == "" || end == "" {
+	periodStart := r.URL.Query().Get("period_start")
+	periodEnd := r.URL.Query().Get("period_end")
+	if periodStart == "" || periodEnd == "" {
 		h.writeError(w, http.StatusBadRequest, "period_start and period_end are required")
 		return
 	}
-	startDate, err := model.ParseMonthYear(start)
+
+	startDate, err := model.ParseMonthYear(periodStart)
 	if err != nil {
 		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	endDate, err := model.ParseMonthYear(end)
+	endDate, err := model.ParseMonthYear(periodEnd)
 	if err != nil {
 		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -212,20 +241,35 @@ func (h *Handler) total(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "period_end must be >= period_start")
 		return
 	}
-	serviceName := r.URL.Query().Get("service_name")
-	if serviceName != "" {
-		serviceName = "%" + serviceName + "%"
+
+	userID, err := parseOptionalUUID(r.URL.Query().Get("user_id"))
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "user_id must be valid UUID")
+		return
 	}
-	total, err := h.repo.TotalCost(r.Context(), startDate, endDate, r.URL.Query().Get("user_id"), serviceName)
+
+	total, err := h.repo.TotalCost(r.Context(), startDate, endDate, userID, r.URL.Query().Get("service_name"))
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
 	h.writeJSON(w, http.StatusOK, map[string]any{
-		"period_start": start,
-		"period_end":   end,
+		"period_start": periodStart,
+		"period_end":   periodEnd,
 		"total_price":  total,
 	})
+}
+
+func parseOptionalUUID(value string) (*uuid.UUID, error) {
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := uuid.Parse(value)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }
 
 func (h *Handler) getSwagger(w http.ResponseWriter, _ *http.Request) {
