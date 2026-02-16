@@ -15,78 +15,80 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
-type SubscriptionRepository struct {
+type DeliveryRepository struct {
 	pool *pgxpool.Pool
 }
 
-func NewSubscriptionRepository(pool *pgxpool.Pool) *SubscriptionRepository {
-	return &SubscriptionRepository{pool: pool}
+func NewDeliveryRepository(pool *pgxpool.Pool) *DeliveryRepository {
+	return &DeliveryRepository{pool: pool}
 }
 
-func scanSubscription(row pgx.Row) (model.Subscription, error) {
-	var s model.Subscription
-	err := row.Scan(&s.ID, &s.ServiceName, &s.Price, &s.UserID, &s.StartDate, &s.EndDate, &s.CreatedAt, &s.UpdatedAt)
-	return s, err
+func scanDelivery(row pgx.Row) (model.Delivery, error) {
+	var d model.Delivery
+	err := row.Scan(&d.ID, &d.OrderNumber, &d.CustomerID, &d.DestinationAddress, &d.Status, &d.Cost, &d.DeliveryDate, &d.CompletedAt, &d.CreatedAt, &d.UpdatedAt)
+	return d, err
 }
 
-func (r *SubscriptionRepository) Create(ctx context.Context, s model.Subscription) (model.Subscription, error) {
+func (r *DeliveryRepository) Create(ctx context.Context, d model.Delivery) (model.Delivery, error) {
 	row := r.pool.QueryRow(ctx, `
-		INSERT INTO subscriptions (service_name, price, user_id, start_date, end_date)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, service_name, price, user_id, start_date, end_date, created_at, updated_at
-	`, s.ServiceName, s.Price, s.UserID, s.StartDate, s.EndDate)
+		INSERT INTO deliveries (order_number, customer_id, destination_address, status, cost, delivery_date, completed_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, order_number, customer_id, destination_address, status, cost, delivery_date, completed_at, created_at, updated_at
+	`, d.OrderNumber, d.CustomerID, d.DestinationAddress, d.Status, d.Cost, d.DeliveryDate, d.CompletedAt)
 
-	out, err := scanSubscription(row)
+	out, err := scanDelivery(row)
 	if err != nil {
-		return model.Subscription{}, fmt.Errorf("create subscription: %w", err)
+		return model.Delivery{}, fmt.Errorf("create delivery: %w", err)
 	}
 	return out, nil
 }
 
-func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (model.Subscription, error) {
+func (r *DeliveryRepository) GetByID(ctx context.Context, id uuid.UUID) (model.Delivery, error) {
 	row := r.pool.QueryRow(ctx, `
-		SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at
-		FROM subscriptions
+		SELECT id, order_number, customer_id, destination_address, status, cost, delivery_date, completed_at, created_at, updated_at
+		FROM deliveries
 		WHERE id = $1
 	`, id)
 
-	out, err := scanSubscription(row)
+	out, err := scanDelivery(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return model.Subscription{}, ErrNotFound
+			return model.Delivery{}, ErrNotFound
 		}
-		return model.Subscription{}, fmt.Errorf("get subscription: %w", err)
+		return model.Delivery{}, fmt.Errorf("get delivery: %w", err)
 	}
 	return out, nil
 }
 
-func (r *SubscriptionRepository) Update(ctx context.Context, id uuid.UUID, s model.Subscription) (model.Subscription, error) {
+func (r *DeliveryRepository) Update(ctx context.Context, id uuid.UUID, d model.Delivery) (model.Delivery, error) {
 	row := r.pool.QueryRow(ctx, `
-		UPDATE subscriptions
-		SET service_name = $2,
-		    price = $3,
-		    user_id = $4,
-		    start_date = $5,
-		    end_date = $6,
+		UPDATE deliveries
+		SET order_number = $2,
+		    customer_id = $3,
+		    destination_address = $4,
+		    status = $5,
+		    cost = $6,
+		    delivery_date = $7,
+		    completed_at = $8,
 		    updated_at = now()
 		WHERE id = $1
-		RETURNING id, service_name, price, user_id, start_date, end_date, created_at, updated_at
-	`, id, s.ServiceName, s.Price, s.UserID, s.StartDate, s.EndDate)
+		RETURNING id, order_number, customer_id, destination_address, status, cost, delivery_date, completed_at, created_at, updated_at
+	`, id, d.OrderNumber, d.CustomerID, d.DestinationAddress, d.Status, d.Cost, d.DeliveryDate, d.CompletedAt)
 
-	out, err := scanSubscription(row)
+	out, err := scanDelivery(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return model.Subscription{}, ErrNotFound
+			return model.Delivery{}, ErrNotFound
 		}
-		return model.Subscription{}, fmt.Errorf("update subscription: %w", err)
+		return model.Delivery{}, fmt.Errorf("update delivery: %w", err)
 	}
 	return out, nil
 }
 
-func (r *SubscriptionRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	cmd, err := r.pool.Exec(ctx, `DELETE FROM subscriptions WHERE id = $1`, id)
+func (r *DeliveryRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	cmd, err := r.pool.Exec(ctx, `DELETE FROM deliveries WHERE id = $1`, id)
 	if err != nil {
-		return fmt.Errorf("delete subscription: %w", err)
+		return fmt.Errorf("delete delivery: %w", err)
 	}
 	if cmd.RowsAffected() == 0 {
 		return ErrNotFound
@@ -94,52 +96,48 @@ func (r *SubscriptionRepository) Delete(ctx context.Context, id uuid.UUID) error
 	return nil
 }
 
-func (r *SubscriptionRepository) List(ctx context.Context, userID *uuid.UUID, serviceName string, limit, offset int) ([]model.Subscription, error) {
+func (r *DeliveryRepository) List(ctx context.Context, customerID *uuid.UUID, status string, limit, offset int) ([]model.Delivery, error) {
 	query := `
-		SELECT id, service_name, price, user_id, start_date, end_date, created_at, updated_at
-		FROM subscriptions
-		WHERE ($1::uuid IS NULL OR user_id = $1)
-		  AND ($2::text IS NULL OR service_name ILIKE '%' || $2 || '%')
+		SELECT id, order_number, customer_id, destination_address, status, cost, delivery_date, completed_at, created_at, updated_at
+		FROM deliveries
+		WHERE ($1::uuid IS NULL OR customer_id = $1)
+		  AND ($2::text IS NULL OR status = $2)
 		ORDER BY created_at DESC
 		LIMIT $3 OFFSET $4
 	`
 
-	rows, err := r.pool.Query(ctx, query, userID, nullableString(serviceName), limit, offset)
+	rows, err := r.pool.Query(ctx, query, customerID, nullableString(status), limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("list subscriptions: %w", err)
+		return nil, fmt.Errorf("list deliveries: %w", err)
 	}
 	defer rows.Close()
 
-	out := make([]model.Subscription, 0)
+	out := make([]model.Delivery, 0)
 	for rows.Next() {
-		var s model.Subscription
-		if err := rows.Scan(&s.ID, &s.ServiceName, &s.Price, &s.UserID, &s.StartDate, &s.EndDate, &s.CreatedAt, &s.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan list subscriptions: %w", err)
+		var d model.Delivery
+		if err := rows.Scan(&d.ID, &d.OrderNumber, &d.CustomerID, &d.DestinationAddress, &d.Status, &d.Cost, &d.DeliveryDate, &d.CompletedAt, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan list deliveries: %w", err)
 		}
-		out = append(out, s)
+		out = append(out, d)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows list subscriptions: %w", err)
+		return nil, fmt.Errorf("rows list deliveries: %w", err)
 	}
 	return out, nil
 }
 
-func (r *SubscriptionRepository) TotalCost(ctx context.Context, periodStart, periodEnd time.Time, userID *uuid.UUID, serviceName string) (int64, error) {
+func (r *DeliveryRepository) TotalCost(ctx context.Context, fromDate, toDate time.Time, customerID *uuid.UUID, status string) (int64, error) {
 	query := `
-		WITH months AS (
-			SELECT generate_series($1::date, $2::date, interval '1 month')::date AS month_start
-		)
-		SELECT COALESCE(SUM(s.price), 0)
-		FROM months m
-		JOIN subscriptions s
-		  ON s.start_date <= m.month_start
-		 AND (s.end_date IS NULL OR s.end_date >= m.month_start)
-		WHERE ($3::uuid IS NULL OR s.user_id = $3)
-		  AND ($4::text IS NULL OR s.service_name ILIKE '%' || $4 || '%')
+		SELECT COALESCE(SUM(cost), 0)
+		FROM deliveries
+		WHERE delivery_date >= $1
+		  AND delivery_date <= $2
+		  AND ($3::uuid IS NULL OR customer_id = $3)
+		  AND ($4::text IS NULL OR status = $4)
 	`
 
 	var total int64
-	if err := r.pool.QueryRow(ctx, query, periodStart, periodEnd, userID, nullableString(serviceName)).Scan(&total); err != nil {
+	if err := r.pool.QueryRow(ctx, query, fromDate, toDate, customerID, nullableString(status)).Scan(&total); err != nil {
 		return 0, fmt.Errorf("total cost: %w", err)
 	}
 	return total, nil

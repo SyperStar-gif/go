@@ -2,68 +2,94 @@ package model
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-type Subscription struct {
-	ID          uuid.UUID  `json:"id"`
-	ServiceName string     `json:"service_name"`
-	Price       int        `json:"price"`
-	UserID      uuid.UUID  `json:"user_id"`
-	StartDate   time.Time  `json:"start_date"`
-	EndDate     *time.Time `json:"end_date,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+type Delivery struct {
+	ID                 uuid.UUID  `json:"id"`
+	OrderNumber        string     `json:"order_number"`
+	CustomerID         uuid.UUID  `json:"customer_id"`
+	DestinationAddress string     `json:"destination_address"`
+	Status             string     `json:"status"`
+	Cost               int        `json:"cost"`
+	DeliveryDate       time.Time  `json:"delivery_date"`
+	CompletedAt        *time.Time `json:"completed_at,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
-type SubscriptionPayload struct {
-	ServiceName string  `json:"service_name"`
-	Price       int     `json:"price"`
-	UserID      string  `json:"user_id"`
-	StartDate   string  `json:"start_date"`
-	EndDate     *string `json:"end_date,omitempty"`
+type DeliveryPayload struct {
+	OrderNumber        string  `json:"order_number"`
+	CustomerID         string  `json:"customer_id"`
+	DestinationAddress string  `json:"destination_address"`
+	Status             string  `json:"status"`
+	Cost               int     `json:"cost"`
+	DeliveryDate       string  `json:"delivery_date"`
+	CompletedAt        *string `json:"completed_at,omitempty"`
 }
 
-func ParseMonthYear(value string) (time.Time, error) {
-	t, err := time.Parse("01-2006", value)
+var allowedStatuses = map[string]struct{}{
+	"pending":    {},
+	"in_transit": {},
+	"delivered":  {},
+	"canceled":   {},
+}
+
+func ParseDate(value string) (time.Time, error) {
+	t, err := time.Parse("2006-01-02", value)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid month-year format %q, expected MM-YYYY", value)
+		return time.Time{}, errors.New("invalid date format, expected YYYY-MM-DD")
 	}
-	return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC), nil
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), nil
 }
 
-func FormatMonthYear(t time.Time) string {
-	return t.Format("01-2006")
+func FormatDate(t time.Time) string {
+	return t.Format("2006-01-02")
 }
 
-func (p SubscriptionPayload) Validate() (Subscription, error) {
-	if p.ServiceName == "" {
-		return Subscription{}, errors.New("service_name is required")
+func (p DeliveryPayload) Validate() (Delivery, error) {
+	if p.OrderNumber == "" {
+		return Delivery{}, errors.New("order_number is required")
 	}
-	if p.Price < 0 {
-		return Subscription{}, errors.New("price must be >= 0")
-	}
-	uid, err := uuid.Parse(p.UserID)
+	uid, err := uuid.Parse(p.CustomerID)
 	if err != nil {
-		return Subscription{}, errors.New("user_id must be valid UUID")
+		return Delivery{}, errors.New("customer_id must be valid UUID")
 	}
-	start, err := ParseMonthYear(p.StartDate)
+	if p.DestinationAddress == "" {
+		return Delivery{}, errors.New("destination_address is required")
+	}
+	if _, ok := allowedStatuses[p.Status]; !ok {
+		return Delivery{}, errors.New("status must be one of: pending, in_transit, delivered, canceled")
+	}
+	if p.Cost < 0 {
+		return Delivery{}, errors.New("cost must be >= 0")
+	}
+	deliveryDate, err := ParseDate(p.DeliveryDate)
 	if err != nil {
-		return Subscription{}, err
+		return Delivery{}, err
 	}
-	var end *time.Time
-	if p.EndDate != nil && *p.EndDate != "" {
-		parsedEnd, err := ParseMonthYear(*p.EndDate)
+
+	var completedAt *time.Time
+	if p.CompletedAt != nil && *p.CompletedAt != "" {
+		parsedCompletedAt, err := ParseDate(*p.CompletedAt)
 		if err != nil {
-			return Subscription{}, err
+			return Delivery{}, err
 		}
-		if parsedEnd.Before(start) {
-			return Subscription{}, errors.New("end_date must be >= start_date")
+		if parsedCompletedAt.Before(deliveryDate) {
+			return Delivery{}, errors.New("completed_at must be >= delivery_date")
 		}
-		end = &parsedEnd
+		completedAt = &parsedCompletedAt
 	}
-	return Subscription{ServiceName: p.ServiceName, Price: p.Price, UserID: uid, StartDate: start, EndDate: end}, nil
+
+	return Delivery{
+		OrderNumber:        p.OrderNumber,
+		CustomerID:         uid,
+		DestinationAddress: p.DestinationAddress,
+		Status:             p.Status,
+		Cost:               p.Cost,
+		DeliveryDate:       deliveryDate,
+		CompletedAt:        completedAt,
+	}, nil
 }

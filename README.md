@@ -1,11 +1,10 @@
-# Subscription Service (Go)
+# Delivery Service (Go)
 
-Сервис предоставляет CRUDL API для подписок и расчет суммарной стоимости за период.
+Сервис предоставляет CRUDL API для доставок и расчет суммарной стоимости за выбранный период.
 
 ## Запуск
 
 ```bash
-cp .env.example .env
 docker compose up --build
 ```
 
@@ -13,16 +12,18 @@ docker compose up --build
 
 - Swagger: `GET /swagger.yaml`
 - Health: `GET /health`
-- CRUDL: `/api/v1/subscriptions/`
-- Aggregation: `GET /api/v1/subscriptions/total?period_start=01-2025&period_end=03-2025&user_id=<uuid>&service_name=Yandex`
+- CRUDL: `/api/v1/deliveries/`
+- Aggregation: `GET /api/v1/deliveries/total?date_from=2025-01-01&date_to=2025-01-31&customer_id=<uuid>&status=delivered`
 
 ## Пример create
 
 ```json
 {
-  "service_name": "Yandex Plus",
-  "price": 400,
-  "user_id": "60601fee-2bf1-4721-ae6f-7636e79a0cba",
-  "start_date": "07-2025"
+  "order_number": "ORD-2025-001",
+  "customer_id": "60601fee-2bf1-4721-ae6f-7636e79a0cba",
+  "destination_address": "Moscow, Tverskaya 1",
+  "status": "pending",
+  "cost": 900,
+  "delivery_date": "2025-07-11"
 }
 ```
