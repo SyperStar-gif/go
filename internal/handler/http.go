@@ -73,6 +73,10 @@ func (h *Handler) Router() http.Handler {
 		r.Delete("/{id}", h.delete)
 	})
 
+	r.Route("/api/v1/analytics", func(r chi.Router) {
+		r.Post("/simulate", h.analyticsSimulate)
+	})
+
 	return r
 }
 

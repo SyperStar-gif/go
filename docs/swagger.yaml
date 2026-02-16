@@ -138,8 +138,232 @@ paths:
                     type: string
                   total_price:
                     type: integer
+  /api/v1/analytics/simulate:
+    post:
+      summary: Simulate restaurant demand analytics daily report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyticsSimulationRequest'
+      responses:
+        '200':
+          description: Simulated report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsDailyReport'
 components:
   schemas:
+    AnalyticsSimulationRequest:
+      type: object
+      required: [sales_24_months, context]
+      properties:
+        sales_24_months:
+          type: array
+          items:
+            $ref: '#/components/schemas/SaleRecord'
+        ingredient_requirements:
+          type: array
+          items:
+            $ref: '#/components/schemas/IngredientRequirement'
+        stock:
+          type: array
+          items:
+            $ref: '#/components/schemas/StockItem'
+        context:
+          $ref: '#/components/schemas/ExternalContext'
+        buffer_percent:
+          type: number
+          format: float
+        historical_plan_fact_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanFactPoint'
+    SaleRecord:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        dish_id:
+          type: string
+        dish_name:
+          type: string
+        category:
+          type: string
+        quantity:
+          type: integer
+        price:
+          type: number
+          format: float
+        temperature:
+          type: number
+          format: float
+        is_holiday:
+          type: boolean
+        event_factor:
+          type: number
+          format: float
+    IngredientRequirement:
+      type: object
+      properties:
+        dish_id:
+          type: string
+        ingredient_id:
+          type: string
+        ingredient:
+          type: string
+        quantity_per_dish:
+          type: number
+          format: float
+        uom:
+          type: string
+    StockItem:
+      type: object
+      properties:
+        ingredient_id:
+          type: string
+        ingredient:
+          type: string
+        quantity:
+          type: number
+          format: float
+        uom:
+          type: string
+    ExternalContext:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date-time
+        forecast_temperature:
+          type: number
+          format: float
+        is_holiday:
+          type: boolean
+        event_name:
+          type: string
+        event_multiplier:
+          type: number
+          format: float
+    PlanFactPoint:
+      type: object
+      properties:
+        label:
+          type: string
+        plan:
+          type: number
+          format: float
+        fact:
+          type: number
+          format: float
+    AnalyticsDailyReport:
+      type: object
+      properties:
+        date:
+          type: string
+        total_revenue:
+          type: number
+          format: float
+        total_orders:
+          type: integer
+        by_dish:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastItem'
+        by_category:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryForecast'
+        hourly_load:
+          type: array
+          items:
+            $ref: '#/components/schemas/HourForecast'
+        purchase_plan:
+          type: array
+          items:
+            $ref: '#/components/schemas/PurchaseItem'
+        plan_fact:
+          $ref: '#/components/schemas/PlanFactMetrics'
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/BusinessRecommendation'
+    ForecastItem:
+      type: object
+      properties:
+        dish_id:
+          type: string
+        dish_name:
+          type: string
+        category:
+          type: string
+        predicted_quantity:
+          type: integer
+        predicted_revenue:
+          type: number
+          format: float
+    CategoryForecast:
+      type: object
+      properties:
+        category:
+          type: string
+        predicted_quantity:
+          type: integer
+        predicted_revenue:
+          type: number
+          format: float
+    HourForecast:
+      type: object
+      properties:
+        hour:
+          type: integer
+        predicted_orders:
+          type: integer
+    PurchaseItem:
+      type: object
+      properties:
+        ingredient_id:
+          type: string
+        ingredient:
+          type: string
+        need:
+          type: number
+          format: float
+        stock:
+          type: number
+          format: float
+        purchase:
+          type: number
+          format: float
+        uom:
+          type: string
+    PlanFactMetrics:
+      type: object
+      properties:
+        mape:
+          type: number
+          format: float
+        wape:
+          type: number
+          format: float
+        bias:
+          type: number
+          format: float
+        rmse:
+          type: number
+          format: float
+    BusinessRecommendation:
+      type: object
+      properties:
+        title:
+          type: string
+        reason:
+          type: string
+        action:
+          type: string
     SubscriptionPayload:
       type: object
       required: [service_name, price, user_id, start_date]
