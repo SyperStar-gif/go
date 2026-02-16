@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Subscription Service API
+  title: Delivery Service API
   version: 1.0.0
 servers:
   - url: http://localhost:8080
@@ -11,34 +11,35 @@ paths:
       responses:
         '200':
           description: ok
-  /api/v1/subscriptions/:
+  /api/v1/deliveries/:
     post:
-      summary: Create subscription
+      summary: Create delivery
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SubscriptionPayload'
+              $ref: '#/components/schemas/DeliveryPayload'
       responses:
         '201':
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Subscription'
+                $ref: '#/components/schemas/Delivery'
     get:
-      summary: List subscriptions
+      summary: List deliveries
       parameters:
         - in: query
-          name: user_id
+          name: customer_id
           schema:
             type: string
             format: uuid
         - in: query
-          name: service_name
+          name: status
           schema:
             type: string
+            enum: [pending, in_transit, delivered, canceled]
         - in: query
           name: limit
           schema:
@@ -55,10 +56,10 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Subscription'
-  /api/v1/subscriptions/{id}:
+                  $ref: '#/components/schemas/Delivery'
+  /api/v1/deliveries/{id}:
     get:
-      summary: Get subscription by id
+      summary: Get delivery by id
       parameters:
         - in: path
           name: id
@@ -70,7 +71,7 @@ paths:
         '200':
           description: Found
     put:
-      summary: Update subscription
+      summary: Update delivery
       parameters:
         - in: path
           name: id
@@ -83,12 +84,12 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SubscriptionPayload'
+              $ref: '#/components/schemas/DeliveryPayload'
       responses:
         '200':
           description: Updated
     delete:
-      summary: Delete subscription
+      summary: Delete delivery
       parameters:
         - in: path
           name: id
@@ -99,31 +100,32 @@ paths:
       responses:
         '204':
           description: Deleted
-  /api/v1/subscriptions/total:
+  /api/v1/deliveries/total:
     get:
-      summary: Calculate total subscription cost for period
+      summary: Calculate total delivery cost for date range
       parameters:
         - in: query
-          name: period_start
+          name: date_from
           required: true
           schema:
             type: string
-            example: 01-2025
+            example: 2025-01-01
         - in: query
-          name: period_end
+          name: date_to
           required: true
           schema:
             type: string
-            example: 03-2025
+            example: 2025-01-31
         - in: query
-          name: user_id
+          name: customer_id
           schema:
             type: string
             format: uuid
         - in: query
-          name: service_name
+          name: status
           schema:
             type: string
+            enum: [pending, in_transit, delivered, canceled]
       responses:
         '200':
           description: Calculated
@@ -132,37 +134,43 @@ paths:
               schema:
                 type: object
                 properties:
-                  period_start:
+                  date_from:
                     type: string
-                  period_end:
+                  date_to:
                     type: string
-                  total_price:
+                  total_cost:
                     type: integer
 components:
   schemas:
-    SubscriptionPayload:
+    DeliveryPayload:
       type: object
-      required: [service_name, price, user_id, start_date]
+      required: [order_number, customer_id, destination_address, status, cost, delivery_date]
       properties:
-        service_name:
+        order_number:
           type: string
-          example: Yandex Plus
-        price:
-          type: integer
-          example: 400
-        user_id:
+          example: ORD-2025-001
+        customer_id:
           type: string
           format: uuid
-        start_date:
+        destination_address:
           type: string
-          example: 07-2025
-        end_date:
+          example: Moscow, Tverskaya 1
+        status:
+          type: string
+          enum: [pending, in_transit, delivered, canceled]
+        cost:
+          type: integer
+          example: 900
+        delivery_date:
+          type: string
+          example: 2025-07-11
+        completed_at:
           type: string
           nullable: true
-          example: 12-2025
-    Subscription:
+          example: 2025-07-12
+    Delivery:
       allOf:
-        - $ref: '#/components/schemas/SubscriptionPayload'
+        - $ref: '#/components/schemas/DeliveryPayload'
         - type: object
           properties:
             id:

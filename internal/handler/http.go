@@ -16,41 +16,45 @@ import (
 )
 
 type Handler struct {
-	repo   *repository.SubscriptionRepository
+	repo   *repository.DeliveryRepository
 	logger *slog.Logger
 }
 
-func New(repo *repository.SubscriptionRepository, logger *slog.Logger) *Handler {
+func New(repo *repository.DeliveryRepository, logger *slog.Logger) *Handler {
 	return &Handler{repo: repo, logger: logger}
 }
 
-type subscriptionResponse struct {
-	ID          uuid.UUID `json:"id"`
-	ServiceName string    `json:"service_name"`
-	Price       int       `json:"price"`
-	UserID      uuid.UUID `json:"user_id"`
-	StartDate   string    `json:"start_date"`
-	EndDate     *string   `json:"end_date,omitempty"`
-	CreatedAt   string    `json:"created_at"`
-	UpdatedAt   string    `json:"updated_at"`
+type deliveryResponse struct {
+	ID                 uuid.UUID `json:"id"`
+	OrderNumber        string    `json:"order_number"`
+	CustomerID         uuid.UUID `json:"customer_id"`
+	DestinationAddress string    `json:"destination_address"`
+	Status             string    `json:"status"`
+	Cost               int       `json:"cost"`
+	DeliveryDate       string    `json:"delivery_date"`
+	CompletedAt        *string   `json:"completed_at,omitempty"`
+	CreatedAt          string    `json:"created_at"`
+	UpdatedAt          string    `json:"updated_at"`
 }
 
-func toResponse(s model.Subscription) subscriptionResponse {
-	var endDate *string
-	if s.EndDate != nil {
-		v := model.FormatMonthYear(*s.EndDate)
-		endDate = &v
+func toResponse(d model.Delivery) deliveryResponse {
+	var completedAt *string
+	if d.CompletedAt != nil {
+		v := model.FormatDate(*d.CompletedAt)
+		completedAt = &v
 	}
 
-	return subscriptionResponse{
-		ID:          s.ID,
-		ServiceName: s.ServiceName,
-		Price:       s.Price,
-		UserID:      s.UserID,
-		StartDate:   model.FormatMonthYear(s.StartDate),
-		EndDate:     endDate,
-		CreatedAt:   s.CreatedAt.Format(http.TimeFormat),
-		UpdatedAt:   s.UpdatedAt.Format(http.TimeFormat),
+	return deliveryResponse{
+		ID:                 d.ID,
+		OrderNumber:        d.OrderNumber,
+		CustomerID:         d.CustomerID,
+		DestinationAddress: d.DestinationAddress,
+		Status:             d.Status,
+		Cost:               d.Cost,
+		DeliveryDate:       model.FormatDate(d.DeliveryDate),
+		CompletedAt:        completedAt,
+		CreatedAt:          d.CreatedAt.Format(http.TimeFormat),
+		UpdatedAt:          d.UpdatedAt.Format(http.TimeFormat),
 	}
 }
 
@@ -64,7 +68,7 @@ func (h *Handler) Router() http.Handler {
 	})
 	r.Get("/swagger.yaml", h.getSwagger)
 
-	r.Route("/api/v1/subscriptions", func(r chi.Router) {
+	r.Route("/api/v1/deliveries", func(r chi.Router) {
 		r.Post("/", h.create)
 		r.Get("/", h.list)
 		r.Get("/total", h.total)
@@ -87,19 +91,19 @@ func (h *Handler) writeError(w http.ResponseWriter, status int, message string) 
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
-	var payload model.SubscriptionPayload
+	var payload model.DeliveryPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
 
-	subscription, err := payload.Validate()
+	delivery, err := payload.Validate()
 	if err != nil {
 		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	created, err := h.repo.Create(r.Context(), subscription)
+	created, err := h.repo.Create(r.Context(), delivery)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -115,17 +119,17 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subscription, err := h.repo.GetByID(r.Context(), id)
+	delivery, err := h.repo.GetByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			h.writeError(w, http.StatusNotFound, "subscription not found")
+			h.writeError(w, http.StatusNotFound, "delivery not found")
 			return
 		}
 		h.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, toResponse(subscription))
+	h.writeJSON(w, http.StatusOK, toResponse(delivery))
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
@@ -135,22 +139,22 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payload model.SubscriptionPayload
+	var payload model.DeliveryPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
 
-	subscription, err := payload.Validate()
+	delivery, err := payload.Validate()
 	if err != nil {
 		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	updated, err := h.repo.Update(r.Context(), id, subscription)
+	updated, err := h.repo.Update(r.Context(), id, delivery)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			h.writeError(w, http.StatusNotFound, "subscription not found")
+			h.writeError(w, http.StatusNotFound, "delivery not found")
 			return
 		}
 		h.writeError(w, http.StatusInternalServerError, err.Error())
@@ -169,7 +173,7 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.repo.Delete(r.Context(), id); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			h.writeError(w, http.StatusNotFound, "subscription not found")
+			h.writeError(w, http.StatusNotFound, "delivery not found")
 			return
 		}
 		h.writeError(w, http.StatusInternalServerError, err.Error())
@@ -200,64 +204,64 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		offset = parsed
 	}
 
-	userID, err := parseOptionalUUID(r.URL.Query().Get("user_id"))
+	customerID, err := parseOptionalUUID(r.URL.Query().Get("customer_id"))
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "user_id must be valid UUID")
+		h.writeError(w, http.StatusBadRequest, "customer_id must be valid UUID")
 		return
 	}
 
-	items, err := h.repo.List(r.Context(), userID, r.URL.Query().Get("service_name"), limit, offset)
+	items, err := h.repo.List(r.Context(), customerID, r.URL.Query().Get("status"), limit, offset)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	result := make([]subscriptionResponse, 0, len(items))
-	for _, s := range items {
-		result = append(result, toResponse(s))
+	result := make([]deliveryResponse, 0, len(items))
+	for _, d := range items {
+		result = append(result, toResponse(d))
 	}
 	h.writeJSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) total(w http.ResponseWriter, r *http.Request) {
-	periodStart := r.URL.Query().Get("period_start")
-	periodEnd := r.URL.Query().Get("period_end")
-	if periodStart == "" || periodEnd == "" {
-		h.writeError(w, http.StatusBadRequest, "period_start and period_end are required")
+	fromDateRaw := r.URL.Query().Get("date_from")
+	toDateRaw := r.URL.Query().Get("date_to")
+	if fromDateRaw == "" || toDateRaw == "" {
+		h.writeError(w, http.StatusBadRequest, "date_from and date_to are required")
 		return
 	}
 
-	startDate, err := model.ParseMonthYear(periodStart)
+	fromDate, err := model.ParseDate(fromDateRaw)
 	if err != nil {
 		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	endDate, err := model.ParseMonthYear(periodEnd)
+	toDate, err := model.ParseDate(toDateRaw)
 	if err != nil {
 		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if endDate.Before(startDate) {
-		h.writeError(w, http.StatusBadRequest, "period_end must be >= period_start")
+	if toDate.Before(fromDate) {
+		h.writeError(w, http.StatusBadRequest, "date_to must be >= date_from")
 		return
 	}
 
-	userID, err := parseOptionalUUID(r.URL.Query().Get("user_id"))
+	customerID, err := parseOptionalUUID(r.URL.Query().Get("customer_id"))
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "user_id must be valid UUID")
+		h.writeError(w, http.StatusBadRequest, "customer_id must be valid UUID")
 		return
 	}
 
-	total, err := h.repo.TotalCost(r.Context(), startDate, endDate, userID, r.URL.Query().Get("service_name"))
+	total, err := h.repo.TotalCost(r.Context(), fromDate, toDate, customerID, r.URL.Query().Get("status"))
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	h.writeJSON(w, http.StatusOK, map[string]any{
-		"period_start": periodStart,
-		"period_end":   periodEnd,
-		"total_price":  total,
+		"date_from":  fromDateRaw,
+		"date_to":    toDateRaw,
+		"total_cost": total,
 	})
 }
 
