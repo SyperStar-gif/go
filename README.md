@@ -26,3 +26,7 @@ docker compose up --build
   "start_date": "07-2025"
 }
 ```
+
+## Дополнительная документация
+
+- Пример расширенного ТЗ для аналитической системы ресторана: `docs/restaurant-demand-analytics-tz.md`
